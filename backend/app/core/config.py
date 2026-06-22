@@ -4,6 +4,7 @@
 class Settings(BaseSettings):
     app_name: str = "QuoteFlow Pro"
     app_env: str = "development"
+    database_url: str = "sqlite:///./quoteflow.db"
 
     model_config = SettingsConfigDict(
         env_file=".env",

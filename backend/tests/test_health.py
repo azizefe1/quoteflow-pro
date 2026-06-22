@@ -19,3 +19,11 @@ def test_health_endpoint():
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
     assert response.json()["app"] == "QuoteFlow Pro"
+
+
+def test_database_health_endpoint():
+    response = client.get("/api/health/database")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "ok"
+    assert response.json()["database"] == "connected"
