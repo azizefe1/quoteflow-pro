@@ -1,4 +1,6 @@
-﻿from fastapi import APIRouter, Depends, HTTPException, status
+﻿from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -8,9 +10,15 @@ from app.models import Company, CompanyMember, User
 from app.schemas.company import (
     CompanyCreate,
     CompanyResponse,
+    CompanyUpdate,
     CompanyWorkspaceResponse,
 )
 from app.services.slugs import slugify
+from app.services.workspaces import (
+    MANAGE_COMPANY_ROLES,
+    require_company_membership,
+    require_company_role,
+)
 
 router = APIRouter(prefix="/api/companies", tags=["companies"])
 
@@ -107,3 +115,50 @@ def list_my_company_workspaces(
         )
 
     return workspaces
+
+
+@router.get("/{company_id}", response_model=CompanyWorkspaceResponse)
+def get_company_workspace(
+    company_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> CompanyWorkspaceResponse:
+    company, membership = require_company_membership(
+        db=db,
+        company_id=company_id,
+        current_user=current_user,
+    )
+
+    return CompanyWorkspaceResponse(
+        membership_id=membership.id,
+        role=membership.role,
+        company=CompanyResponse.model_validate(company),
+    )
+
+
+@router.patch("/{company_id}", response_model=CompanyResponse)
+def update_company_workspace(
+    company_id: UUID,
+    payload: CompanyUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> CompanyResponse:
+    company, _membership = require_company_role(
+        db=db,
+        company_id=company_id,
+        current_user=current_user,
+        allowed_roles=MANAGE_COMPANY_ROLES,
+    )
+
+    update_data = payload.model_dump(exclude_unset=True)
+
+    for field_name, value in update_data.items():
+        if field_name == "email" and value is not None:
+            value = str(value)
+
+        setattr(company, field_name, value)
+
+    db.commit()
+    db.refresh(company)
+
+    return CompanyResponse.model_validate(company)
