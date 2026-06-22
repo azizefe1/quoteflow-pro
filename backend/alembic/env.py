@@ -7,6 +7,7 @@ from alembic import context
 
 from app.core.config import settings
 from app.db.base import Base
+from app.models import User
 
 config = context.config
 
@@ -35,13 +36,16 @@ def run_migrations_offline() -> None:
 def run_migrations_online() -> None:
     configuration = config.get_section(config.config_ini_section, {})
 
+    connect_args = {}
+
+    if settings.database_url.startswith("sqlite"):
+        connect_args = {"check_same_thread": False}
+
     connectable = engine_from_config(
         configuration,
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
-        connect_args={"check_same_thread": False}
-        if settings.database_url.startswith("sqlite")
-        else {},
+        connect_args=connect_args,
     )
 
     with connectable.connect() as connection:
