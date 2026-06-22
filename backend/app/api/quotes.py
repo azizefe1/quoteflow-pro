@@ -2,13 +2,13 @@ from datetime import date
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.auth import get_current_user
 from app.db.session import get_db
-from app.models import Customer, Product, Quote, QuoteItem, User
+from app.models import Company, Customer, Product, Quote, QuoteItem, User
 from app.schemas.quote import (
     QuoteCreate,
     QuoteItemResponse,
@@ -18,6 +18,7 @@ from app.schemas.quote import (
     QuoteStatusUpdate,
 )
 from app.services.quote_calculator import calculate_quote_item, calculate_quote_totals
+from app.services.quote_pdf import build_quote_pdf
 from app.services.quote_status import (
     InvalidQuoteStatusError,
     InvalidQuoteStatusTransitionError,
@@ -102,13 +103,20 @@ def get_quote_for_company_or_404(
     return quote
 
 
-def build_quote_response(db: Session, quote: Quote) -> QuoteResponse:
-    items = (
+def get_quote_items(
+    db: Session,
+    quote_id: UUID,
+) -> list[QuoteItem]:
+    return (
         db.query(QuoteItem)
-        .filter(QuoteItem.quote_id == quote.id)
+        .filter(QuoteItem.quote_id == quote_id)
         .order_by(QuoteItem.sort_order.asc(), QuoteItem.created_at.asc())
         .all()
     )
+
+
+def build_quote_response(db: Session, quote: Quote) -> QuoteResponse:
+    items = get_quote_items(db=db, quote_id=quote.id)
 
     return QuoteResponse(
         id=quote.id,
@@ -130,6 +138,18 @@ def build_quote_response(db: Session, quote: Quote) -> QuoteResponse:
             for item in items
         ],
     )
+
+
+def safe_pdf_filename(value: str) -> str:
+    safe_value = "".join(
+        character if character.isalnum() or character in ("-", "_") else "-"
+        for character in value
+    ).strip("-")
+
+    if not safe_value:
+        return "quote"
+
+    return safe_value
 
 
 @router.post("", response_model=QuoteResponse, status_code=status.HTTP_201_CREATED)
@@ -294,6 +314,53 @@ def get_quote(
     )
 
     return build_quote_response(db=db, quote=quote)
+
+
+@router.get("/{quote_id}/pdf")
+def download_quote_pdf(
+    company_id: UUID,
+    quote_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    require_company_membership(
+        db=db,
+        company_id=company_id,
+        current_user=current_user,
+    )
+
+    quote = get_quote_for_company_or_404(
+        db=db,
+        company_id=company_id,
+        quote_id=quote_id,
+    )
+
+    company = db.get(Company, company_id)
+    customer = db.get(Customer, quote.customer_id)
+    items = get_quote_items(db=db, quote_id=quote.id)
+
+    if company is None or customer is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Quote PDF data not found",
+        )
+
+    pdf_bytes = build_quote_pdf(
+        company=company,
+        customer=customer,
+        quote=quote,
+        items=items,
+    )
+
+    filename = f"{safe_pdf_filename(quote.quote_number)}.pdf"
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+        },
+    )
 
 
 @router.patch("/{quote_id}/status", response_model=QuoteResponse)
