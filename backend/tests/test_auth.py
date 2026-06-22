@@ -2,13 +2,9 @@
 
 from fastapi.testclient import TestClient
 
-from app.db.base import Base
-from app.db.session import engine
 from app.main import app
-from app.models import User
+from app.services.security import hash_password, verify_password
 
-
-Base.metadata.create_all(bind=engine)
 
 client = TestClient(app)
 
@@ -63,6 +59,38 @@ def test_register_login_and_get_current_user():
     assert current_user["full_name"] == "Test User"
 
 
+def test_register_normalizes_email_and_full_name():
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "  USER@Example.COM  ",
+            "password": "Test12345",
+            "full_name": "  Test User  ",
+        },
+    )
+
+    assert register_response.status_code == 201
+
+    registered_user = register_response.json()
+
+    assert registered_user["email"] == "user@example.com"
+    assert registered_user["full_name"] == "Test User"
+
+
+def test_register_duplicate_email_fails():
+    payload = {
+        "email": "duplicate@example.com",
+        "password": "Test12345",
+        "full_name": "Duplicate User",
+    }
+
+    first_response = client.post("/api/auth/register", json=payload)
+    second_response = client.post("/api/auth/register", json=payload)
+
+    assert first_response.status_code == 201
+    assert second_response.status_code == 409
+
+
 def test_login_with_wrong_password_fails():
     unique_email = f"user-{uuid.uuid4()}@example.com"
 
@@ -84,3 +112,29 @@ def test_login_with_wrong_password_fails():
     )
 
     assert login_response.status_code == 401
+
+
+def test_get_me_without_token_fails():
+    response = client.get("/api/auth/me")
+
+    assert response.status_code == 401
+
+
+def test_get_me_with_invalid_token_fails():
+    response = client.get(
+        "/api/auth/me",
+        headers={
+            "Authorization": "Bearer invalid-token",
+        },
+    )
+
+    assert response.status_code == 401
+
+
+def test_password_hash_verify_round_trip():
+    password = "StrongPassword123"
+    password_hash = hash_password(password)
+
+    assert password_hash != password
+    assert verify_password(password, password_hash) is True
+    assert verify_password("WrongPassword123", password_hash) is False

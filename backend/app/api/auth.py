@@ -22,6 +22,14 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 
+def normalize_email(email: object) -> str:
+    return str(email).strip().lower()
+
+
+def normalize_full_name(full_name: object) -> str:
+    return str(full_name).strip()
+
+
 def get_current_user(
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
@@ -45,7 +53,10 @@ def register_user(
     payload: UserCreate,
     db: Session = Depends(get_db),
 ) -> User:
-    existing_user = db.query(User).filter(User.email == payload.email).first()
+    email = normalize_email(payload.email)
+    full_name = normalize_full_name(payload.full_name)
+
+    existing_user = db.query(User).filter(User.email == email).first()
 
     if existing_user is not None:
         raise HTTPException(
@@ -54,9 +65,9 @@ def register_user(
         )
 
     user = User(
-        email=payload.email,
+        email=email,
         hashed_password=hash_password(payload.password),
-        full_name=payload.full_name,
+        full_name=full_name,
     )
 
     db.add(user)
@@ -71,7 +82,9 @@ def login_user(
     payload: UserLogin,
     db: Session = Depends(get_db),
 ) -> TokenResponse:
-    user = db.query(User).filter(User.email == payload.email).first()
+    email = normalize_email(payload.email)
+
+    user = db.query(User).filter(User.email == email).first()
 
     if user is None or not verify_password(payload.password, user.hashed_password):
         raise HTTPException(
