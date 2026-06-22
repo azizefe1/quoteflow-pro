@@ -36,6 +36,15 @@ export function listMyCompanyWorkspaces(
   });
 }
 
+export function getCompanyWorkspace(
+  token: string,
+  companyId: string,
+): Promise<CompanyWorkspaceResponse> {
+  return apiRequest<CompanyWorkspaceResponse>(`/api/companies/${companyId}`, {
+    token,
+  });
+}
+
 export function createCompanyWorkspace(
   token: string,
   payload: CompanyCreatePayload,

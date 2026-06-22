@@ -159,8 +159,7 @@ export default function DashboardPage() {
                     Create and manage your companies.
                   </h2>
                   <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400">
-                    Customers, products and quotes will be attached to the selected
-                    company workspace.
+                    Open a workspace to manage its customers, products and quote screens.
                   </p>
                 </div>
 
@@ -228,16 +227,12 @@ export default function DashboardPage() {
             </section>
 
             <section className="rounded-[2rem] border border-white/10 bg-white/[0.05] p-6 shadow-2xl shadow-black/20">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-black uppercase tracking-[0.35em] text-cyan-300">
-                    My workspaces
-                  </p>
-                  <h2 className="mt-4 text-3xl font-black tracking-tight">
-                    Company list
-                  </h2>
-                </div>
-              </div>
+              <p className="text-sm font-black uppercase tracking-[0.35em] text-cyan-300">
+                My workspaces
+              </p>
+              <h2 className="mt-4 text-3xl font-black tracking-tight">
+                Select a company
+              </h2>
 
               <div className="mt-8 grid gap-4">
                 {workspaces.length === 0 ? (
@@ -267,9 +262,12 @@ export default function DashboardPage() {
                           <span className="rounded-full bg-cyan-300/10 px-4 py-2 text-xs font-black uppercase tracking-[0.2em] text-cyan-300">
                             {workspace.role}
                           </span>
-                          <span className="rounded-full bg-white/5 px-4 py-2 text-xs font-bold text-slate-300">
-                            {workspace.company.email ?? "No email"}
-                          </span>
+                          <Link
+                            className="rounded-full bg-white px-4 py-2 text-xs font-black text-slate-950 transition hover:bg-cyan-100"
+                            href={`/workspaces/${workspace.company.id}`}
+                          >
+                            Open workspace
+                          </Link>
                         </div>
                       </div>
                     </div>
