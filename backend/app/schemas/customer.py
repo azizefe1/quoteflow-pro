@@ -73,6 +73,7 @@ class CustomerResponse(BaseModel):
     tax_number: Optional[str]
     address: Optional[str]
     notes: Optional[str]
+    is_active: bool
 
     model_config = {
         "from_attributes": True,
