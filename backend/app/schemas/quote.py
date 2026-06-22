@@ -54,6 +54,15 @@ class QuoteCreate(BaseModel):
         return normalized
 
 
+class QuoteStatusUpdate(BaseModel):
+    status: str = Field(min_length=2, max_length=40)
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def normalize_status(cls, value: object) -> str:
+        return str(value).strip().lower()
+
+
 class QuoteItemResponse(BaseModel):
     id: UUID
     product_id: Optional[UUID]

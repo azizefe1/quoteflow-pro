@@ -1,4 +1,5 @@
 from datetime import date
+from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -14,8 +15,14 @@ from app.schemas.quote import (
     QuoteListItemResponse,
     QuoteListResponse,
     QuoteResponse,
+    QuoteStatusUpdate,
 )
 from app.services.quote_calculator import calculate_quote_item, calculate_quote_totals
+from app.services.quote_status import (
+    InvalidQuoteStatusError,
+    InvalidQuoteStatusTransitionError,
+    validate_quote_status_transition,
+)
 from app.services.workspaces import require_company_membership
 
 router = APIRouter(
@@ -232,7 +239,7 @@ def list_quotes(
     company_id: UUID,
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
-    status_filter: str | None = Query(default=None, alias="status", max_length=40),
+    status_filter: Optional[str] = Query(default=None, alias="status", max_length=40),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> QuoteListResponse:
@@ -245,7 +252,7 @@ def list_quotes(
     query = db.query(Quote).filter(Quote.company_id == company_id)
 
     if status_filter is not None and status_filter.strip():
-        query = query.filter(Quote.status == status_filter.strip())
+        query = query.filter(Quote.status == status_filter.strip().lower())
 
     total = query.count()
 
@@ -285,5 +292,44 @@ def get_quote(
         company_id=company_id,
         quote_id=quote_id,
     )
+
+    return build_quote_response(db=db, quote=quote)
+
+
+@router.patch("/{quote_id}/status", response_model=QuoteResponse)
+def update_quote_status(
+    company_id: UUID,
+    quote_id: UUID,
+    payload: QuoteStatusUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> QuoteResponse:
+    require_company_membership(
+        db=db,
+        company_id=company_id,
+        current_user=current_user,
+    )
+
+    quote = get_quote_for_company_or_404(
+        db=db,
+        company_id=company_id,
+        quote_id=quote_id,
+    )
+
+    try:
+        next_status = validate_quote_status_transition(
+            current_status=quote.status,
+            next_status=payload.status,
+        )
+    except (InvalidQuoteStatusError, InvalidQuoteStatusTransitionError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    quote.status = next_status
+
+    db.commit()
+    db.refresh(quote)
 
     return build_quote_response(db=db, quote=quote)
