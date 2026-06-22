@@ -1,4 +1,4 @@
-﻿import uuid
+import uuid
 
 from fastapi.testclient import TestClient
 
@@ -97,6 +97,7 @@ def test_create_customer_for_company():
     assert customer["contact_name"] == "Ahmet Yilmaz"
     assert customer["email"] == "contact@abcindustrial.com"
     assert customer["notes"] == "Priority customer"
+    assert customer["is_active"] is True
 
 
 def test_list_customers_for_company():
@@ -115,11 +116,14 @@ def test_list_customers_for_company():
 
     assert response.status_code == 200
 
-    customers = response.json()
+    payload = response.json()
 
-    assert len(customers) == 2
+    assert payload["total"] == 2
+    assert payload["limit"] == 20
+    assert payload["offset"] == 0
+    assert len(payload["items"]) == 2
 
-    customer_names = {customer["name"] for customer in customers}
+    customer_names = {customer["name"] for customer in payload["items"]}
 
     assert "First Customer" in customer_names
     assert "Second Customer" in customer_names
@@ -207,3 +211,115 @@ def test_non_member_cannot_access_company_customers():
     assert list_response.status_code == 404
     assert detail_response.status_code == 404
     assert update_response.status_code == 404
+
+
+def test_search_customers():
+    token = register_and_login(f"customer-owner-{uuid.uuid4()}@example.com")
+    company = create_company(token)
+
+    create_customer(token, company["id"], "Alpha Machinery")
+    create_customer(token, company["id"], "Beta Industrial")
+
+    response = client.get(
+        f"/api/companies/{company['id']}/customers?search=Alpha",
+        headers={
+            "Authorization": f"Bearer {token}",
+        },
+    )
+
+    assert response.status_code == 200
+
+    payload = response.json()
+
+    assert payload["total"] == 1
+    assert len(payload["items"]) == 1
+    assert payload["items"][0]["name"] == "Alpha Machinery"
+
+
+def test_customer_pagination():
+    token = register_and_login(f"customer-owner-{uuid.uuid4()}@example.com")
+    company = create_company(token)
+
+    create_customer(token, company["id"], "Customer One")
+    create_customer(token, company["id"], "Customer Two")
+    create_customer(token, company["id"], "Customer Three")
+
+    response = client.get(
+        f"/api/companies/{company['id']}/customers?limit=2&offset=0",
+        headers={
+            "Authorization": f"Bearer {token}",
+        },
+    )
+
+    assert response.status_code == 200
+
+    payload = response.json()
+
+    assert payload["total"] == 3
+    assert payload["limit"] == 2
+    assert payload["offset"] == 0
+    assert len(payload["items"]) == 2
+
+
+def test_deactivate_customer_hides_from_default_list_and_detail():
+    token = register_and_login(f"customer-owner-{uuid.uuid4()}@example.com")
+    company = create_company(token)
+    customer = create_customer(token, company["id"], "Inactive Customer")
+
+    delete_response = client.delete(
+        f"/api/companies/{company['id']}/customers/{customer['id']}",
+        headers={
+            "Authorization": f"Bearer {token}",
+        },
+    )
+
+    assert delete_response.status_code == 200
+    assert delete_response.json()["is_active"] is False
+
+    list_response = client.get(
+        f"/api/companies/{company['id']}/customers",
+        headers={
+            "Authorization": f"Bearer {token}",
+        },
+    )
+
+    assert list_response.status_code == 200
+    assert list_response.json()["total"] == 0
+    assert list_response.json()["items"] == []
+
+    detail_response = client.get(
+        f"/api/companies/{company['id']}/customers/{customer['id']}",
+        headers={
+            "Authorization": f"Bearer {token}",
+        },
+    )
+
+    assert detail_response.status_code == 404
+
+
+def test_include_inactive_customers():
+    token = register_and_login(f"customer-owner-{uuid.uuid4()}@example.com")
+    company = create_company(token)
+    customer = create_customer(token, company["id"], "Inactive Customer")
+
+    client.delete(
+        f"/api/companies/{company['id']}/customers/{customer['id']}",
+        headers={
+            "Authorization": f"Bearer {token}",
+        },
+    )
+
+    response = client.get(
+        f"/api/companies/{company['id']}/customers?include_inactive=true",
+        headers={
+            "Authorization": f"Bearer {token}",
+        },
+    )
+
+    assert response.status_code == 200
+
+    payload = response.json()
+
+    assert payload["total"] == 1
+    assert len(payload["items"]) == 1
+    assert payload["items"][0]["is_active"] is False

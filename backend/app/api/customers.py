@@ -1,12 +1,19 @@
-﻿from uuid import UUID
+from typing import Optional
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.api.auth import get_current_user
 from app.db.session import get_db
 from app.models import Customer, User
-from app.schemas.customer import CustomerCreate, CustomerResponse, CustomerUpdate
+from app.schemas.customer import (
+    CustomerCreate,
+    CustomerListResponse,
+    CustomerResponse,
+    CustomerUpdate,
+)
 from app.services.workspaces import require_company_membership
 
 router = APIRouter(
@@ -19,15 +26,17 @@ def get_customer_for_company_or_404(
     db: Session,
     company_id: UUID,
     customer_id: UUID,
+    active_only: bool = True,
 ) -> Customer:
-    customer = (
-        db.query(Customer)
-        .filter(
-            Customer.id == customer_id,
-            Customer.company_id == company_id,
-        )
-        .first()
+    query = db.query(Customer).filter(
+        Customer.id == customer_id,
+        Customer.company_id == company_id,
     )
+
+    if active_only:
+        query = query.filter(Customer.is_active.is_(True))
+
+    customer = query.first()
 
     if customer is None:
         raise HTTPException(
@@ -69,23 +78,54 @@ def create_customer(
     return customer
 
 
-@router.get("", response_model=list[CustomerResponse])
+@router.get("", response_model=CustomerListResponse)
 def list_customers(
     company_id: UUID,
+    search: Optional[str] = Query(default=None, max_length=120),
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    include_inactive: bool = Query(default=False),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> list[Customer]:
+) -> CustomerListResponse:
     require_company_membership(
         db=db,
         company_id=company_id,
         current_user=current_user,
     )
 
-    return (
-        db.query(Customer)
-        .filter(Customer.company_id == company_id)
-        .order_by(Customer.created_at.desc())
+    query = db.query(Customer).filter(Customer.company_id == company_id)
+
+    if not include_inactive:
+        query = query.filter(Customer.is_active.is_(True))
+
+    if search is not None and search.strip():
+        search_value = f"%{search.strip()}%"
+
+        query = query.filter(
+            or_(
+                Customer.name.ilike(search_value),
+                Customer.contact_name.ilike(search_value),
+                Customer.email.ilike(search_value),
+                Customer.phone.ilike(search_value),
+                Customer.tax_number.ilike(search_value),
+            )
+        )
+
+    total = query.count()
+
+    customers = (
+        query.order_by(Customer.created_at.desc())
+        .offset(offset)
+        .limit(limit)
         .all()
+    )
+
+    return CustomerListResponse(
+        total=total,
+        limit=limit,
+        offset=offset,
+        items=[CustomerResponse.model_validate(customer) for customer in customers],
     )
 
 
@@ -136,6 +176,33 @@ def update_customer(
             value = str(value)
 
         setattr(customer, field_name, value)
+
+    db.commit()
+    db.refresh(customer)
+
+    return customer
+
+
+@router.delete("/{customer_id}", response_model=CustomerResponse)
+def deactivate_customer(
+    company_id: UUID,
+    customer_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Customer:
+    require_company_membership(
+        db=db,
+        company_id=company_id,
+        current_user=current_user,
+    )
+
+    customer = get_customer_for_company_or_404(
+        db=db,
+        company_id=company_id,
+        customer_id=customer_id,
+    )
+
+    customer.is_active = False
 
     db.commit()
     db.refresh(customer)
