@@ -1,9 +1,11 @@
-from app.models.company import Company
+﻿from app.models.company import Company
 from app.models.company_member import CompanyMember
+from app.models.customer import Customer
 from app.models.user import User
 
 __all__ = [
     "Company",
     "CompanyMember",
+    "Customer",
     "User",
 ]
