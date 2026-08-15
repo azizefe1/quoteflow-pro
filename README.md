@@ -59,3 +59,24 @@ QuoteFlow Pro is not planned as a small demo project. It is planned as a profess
 ## Status
 
 Project initialization started.
+
+## Windows Verification
+
+From the project root, run the complete local verification flow in PowerShell:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\verify.ps1
+```
+
+The script starts the Docker services, creates isolated verification databases,
+runs Alembic migrations and backend tests, and validates the frontend with lint
+and a production build. Results are saved to `verification-output.txt`.
+
+To also rehearse the corrective migration against a SQL backup, pass the backup
+path explicitly. The backup is restored only into the dedicated
+`quoteflow_backup_verify` database:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\verify.ps1 `
+  -BackupPath "C:\path\to\quoteflow_database_backup.sql"
+```
