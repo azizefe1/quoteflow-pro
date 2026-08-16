@@ -4,8 +4,9 @@ from collections.abc import Generator
 import pytest
 
 os.environ["APP_ENV"] = "test"
-os.environ["DATABASE_URL"] = (
-    "postgresql+psycopg://quoteflow:quoteflow_password@localhost:5433/quoteflow_test"
+os.environ["DATABASE_URL"] = os.environ.get(
+    "TEST_DATABASE_URL",
+    "postgresql+psycopg://quoteflow:quoteflow_password@localhost:5433/quoteflow_test",
 )
 os.environ["SECRET_KEY"] = "quoteflow_pro_test_secret_key"
 

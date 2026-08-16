@@ -7,7 +7,7 @@ from alembic import context
 
 from app.core.config import settings
 from app.db.base import Base
-from app.models import Company, CompanyMember, Customer, Product, User
+from app.models import Company, CompanyMember, Customer, Product, Quote, QuoteItem, User
 
 config = context.config
 

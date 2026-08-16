@@ -20,6 +20,7 @@ Thumbs.db
 
 # Logs
 *.log
+/verification-output.txt
 
 # Database
 *.db
